@@ -1,22 +1,27 @@
-import { Start } from './scenes/Start.js';
+import { GameScene } from './scenes/GameScene.js';
 
 const config = {
     type: Phaser.AUTO,
-    title: 'Overlord Rising',
-    description: '',
     parent: 'game-container',
-    width: 1280,
-    height: 720,
-    backgroundColor: '#000000',
-    pixelArt: false,
-    scene: [
-        Start
-    ],
+    width: 800,
+    height: 600,
+    input: {
+        activePointers: 3 // PERMITE HASTA 3 TOQUES SIMULTÁNEOS
+    },
+    pixelArt: true,
+    physics: {
+        default: 'arcade',
+        arcade: {
+            gravity: { y: 0 },
+            debug: false
+        }
+    },
     scale: {
         mode: Phaser.Scale.FIT,
         autoCenter: Phaser.Scale.CENTER_BOTH
     },
-}
+    scene: [GameScene]
+};
 
 new Phaser.Game(config);
             
