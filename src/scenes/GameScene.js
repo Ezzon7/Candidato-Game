@@ -26,7 +26,7 @@ export class GameScene extends Phaser.Scene {
         const objetosLayer = map.createLayer('Objetos', allTilesets, 0, 0); 
         const decoracionesLayer = map.createLayer('Decoraciones', allTilesets, 0, 0); 
 
-        // Encontrar posición de la anfora (GIDs 94-97) para interacción
+        // Lógica del compañero: Encontrar posición de la anfora (GIDs 94-97)
         this.anforaPos = null;
         decoracionesLayer.forEachTile(tile => {
             if (tile.index >= 94 && tile.index <= 97) {
@@ -51,7 +51,7 @@ export class GameScene extends Phaser.Scene {
         }
 
         // --- ENTIDADES Y FÍSICA ---
-        this.player = this.physics.add.sprite(260, 1450, 'player_texture', 1); //260, 1450
+        this.player = this.physics.add.sprite(260, 1450, 'player_texture', 1);
         this.player.body.setSize(16, 12).setOffset(5, 35);
         this.createAnimations();
 
@@ -68,7 +68,7 @@ export class GameScene extends Phaser.Scene {
         this.teclas = this.input.keyboard.addKeys('W,A,S,D');
         this.teclaE = this.input.keyboard.addKey('E');
 
-        // Prompt de interacción
+        // Prompt de interacción (Compañero)
         this.interactionPrompt = this.add.text(width / 2, height - 100, 'Presiona E para votar', {
             fontSize: '24px',
             color: '#ffffff',
@@ -78,21 +78,22 @@ export class GameScene extends Phaser.Scene {
 
         this.crearDPadCruceta();
 
-        // --- GRUPO DE BOTONES INTERACTUABLES ---
+        // --- GRUPO DE BOTONES INTERACTUABLES (Tu lógica con nueva función) ---
         this.botonesInteractivos = [];
 
-        // Función reutilizable para crear botones en el mundo
         const crearBotonMundo = (x, y, id) => {
             const btn = this.add.image(x, y, 'btn_interactuar')
                 .setInteractive()
                 .setScale(0.5)
                 .setDepth(100)
-                .setVisible(false); // Nacen invisibles
+                .setVisible(false);
 
             btn.on('pointerdown', () => {
                 btn.setAlpha(0.7);
                 btn.setTint(0xaaaaaa);
-                console.log(`Interacción activada en: ${id}`);
+                console.log(`Iniciando votación desde: ${id}`);
+                // Iniciamos la escena de votación al presionar
+                this.scene.start('VotingScene');
             });
 
             btn.on('pointerup', () => {
@@ -103,7 +104,7 @@ export class GameScene extends Phaser.Scene {
             return btn;
         };
 
-        // Creamos los dos botones en las posiciones que definiste
+        // Botones en las posiciones solicitadas
         this.botonesInteractivos.push(crearBotonMundo(1555, 82, "Punto A"));
         this.botonesInteractivos.push(crearBotonMundo(920, 100, "Punto B"));
     }
@@ -112,32 +113,17 @@ export class GameScene extends Phaser.Scene {
         const { width, height } = this.scale;
         const xBase = width - 300; 
         const yBase = height - 250;
-        
-        const crucetaImg = this.add.image(xBase, yBase, 'dpad_cruceta')
-            .setScrollFactor(0)
-            .setAlpha(0.6)
-            .setScale(0.10);
-
+        const crucetaImg = this.add.image(xBase, yBase, 'dpad_cruceta').setScrollFactor(0).setAlpha(0.6).setScale(0.10);
         this.touchControl = { up: false, down: false, left: false, right: false };
         const zonaSize = 60; 
 
         const crearZona = (x, y, dir) => {
-            const zona = this.add.rectangle(x, y, zonaSize, zonaSize, 0x000000, 0)
-                .setInteractive()
-                .setScrollFactor(0);
-
+            const zona = this.add.rectangle(x, y, zonaSize, zonaSize, 0x000000, 0).setInteractive().setScrollFactor(0);
             const stopDir = () => {
                 this.touchControl[dir] = false;
-                if (!Object.values(this.touchControl).includes(true)) {
-                    crucetaImg.setAlpha(0.6);
-                }
+                if (!Object.values(this.touchControl).includes(true)) crucetaImg.setAlpha(0.6);
             };
-
-            zona.on('pointerdown', () => { 
-                this.touchControl[dir] = true; 
-                crucetaImg.setAlpha(1);
-            });
-
+            zona.on('pointerdown', () => { this.touchControl[dir] = true; crucetaImg.setAlpha(1); });
             zona.on('pointerup', stopDir);
             zona.on('pointerout', stopDir);
         };
@@ -165,7 +151,7 @@ export class GameScene extends Phaser.Scene {
         this.player.setVelocity(0);
         let mov = false;
 
-        // Movimiento (Teclado + Táctil)
+        // Movimiento
         if (this.teclas.A.isDown || this.touchControl.left) {
             this.player.setVelocityX(-speed);
             this.player.anims.play('walk-left', true);
@@ -186,10 +172,9 @@ export class GameScene extends Phaser.Scene {
             mov = true;
         }
 
-        // --- DETECCIÓN DE ANFORA ---
         if (this.anforaPos) {
-            const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, this.anforaPos.x, this.anforaPos.y);
-            if (dist < 60) {
+            const distAnfora = Phaser.Math.Distance.Between(this.player.x, this.player.y, this.anforaPos.x, this.anforaPos.y);
+            if (distAnfora < 60) {
                 this.interactionPrompt.setVisible(true);
                 if (Phaser.Input.Keyboard.JustDown(this.teclaE)) {
                     this.scene.start('VotingScene');
@@ -201,23 +186,13 @@ export class GameScene extends Phaser.Scene {
 
         if (!mov) {
             this.player.anims.stop();
-            if (this.player.anims.currentAnim) {
-                this.player.setFrame(this.player.anims.currentAnim.frames[1].frame.name);
-            }
+            if (this.player.anims.currentAnim) this.player.setFrame(this.player.anims.currentAnim.frames[1].frame.name);
         }
 
-        // --- LÓGICA DE PROXIMIDAD (Distancia: 30) ---
+        // Lógica de proximidad para tus botones (Distancia 30)
         this.botonesInteractivos.forEach(btn => {
-            const distancia = Phaser.Math.Distance.Between(
-                this.player.x, this.player.y, 
-                btn.x, btn.y
-            );
-
-            if (distancia < 30) {
-                btn.setVisible(true);
-            } else {
-                btn.setVisible(false);
-            }
+            const distancia = Phaser.Math.Distance.Between(this.player.x, this.player.y, btn.x, btn.y);
+            btn.setVisible(distancia < 30);
         });
     }
 }
