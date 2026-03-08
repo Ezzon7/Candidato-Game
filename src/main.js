@@ -1,4 +1,5 @@
 import { GameScene } from './scenes/GameScene.js';
+import { VotingScene } from './scenes/VotingScene.js';
 
 const config = {
     type: Phaser.AUTO,
@@ -20,7 +21,7 @@ const config = {
         mode: Phaser.Scale.FIT,
         autoCenter: Phaser.Scale.CENTER_BOTH
     },
-    scene: [GameScene]
+    scene: [GameScene, VotingScene]
 };
 
 new Phaser.Game(config);

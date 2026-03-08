@@ -23,6 +23,16 @@ export class GameScene extends Phaser.Scene {
         const objetosLayer = map.createLayer('Objetos', allTilesets, 0, 0); 
         const decoracionesLayer = map.createLayer('Decoraciones', allTilesets, 0, 0); 
 
+        // Encontrar posición de la anfora (GIDs 94-97) para interacción
+        this.anforaPos = null;
+        decoracionesLayer.forEachTile(tile => {
+            if (tile.index >= 94 && tile.index <= 97) {
+                if (!this.anforaPos) {
+                    this.anforaPos = { x: tile.getCenterX(), y: tile.getCenterY() };
+                }
+            }
+        });
+
         paredesLayer.setCollisionByProperty({ collides: true });
         if (objetosLayer) objetosLayer.setCollisionByProperty({ collides: true });
 
@@ -51,7 +61,18 @@ export class GameScene extends Phaser.Scene {
         this.cameras.main.setZoom(2.8);
 
         // --- CONTROLES ---
+        const { width, height } = this.scale;
         this.teclas = this.input.keyboard.addKeys('W,A,S,D');
+        this.teclaE = this.input.keyboard.addKey('E');
+
+        // Prompt de interacción
+        this.interactionPrompt = this.add.text(width / 2, height - 100, 'Presiona E para votar', {
+            fontSize: '24px',
+            color: '#ffffff',
+            backgroundColor: '#000000',
+            padding: { x: 10, y: 5 }
+        }).setOrigin(0.5).setScrollFactor(0).setVisible(false).setAlpha(0.8);
+
         this.crearDPadCruceta();
     }
 
@@ -138,6 +159,19 @@ export class GameScene extends Phaser.Scene {
             this.player.setVelocityY(speed);
             if (!mov) this.player.anims.play('walk-down', true);
             mov = true;
+        }
+
+        // --- DETECCIÓN DE ANFORA ---
+        if (this.anforaPos) {
+            const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, this.anforaPos.x, this.anforaPos.y);
+            if (dist < 60) {
+                this.interactionPrompt.setVisible(true);
+                if (Phaser.Input.Keyboard.JustDown(this.teclaE)) {
+                    this.scene.start('VotingScene');
+                }
+            } else {
+                this.interactionPrompt.setVisible(false);
+            }
         }
 
         if (!mov) {
