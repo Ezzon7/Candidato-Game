@@ -54,7 +54,11 @@ export class GameScene extends Phaser.Scene {
         }
 
         // --- ENTIDADES Y FÍSICA ---
-        this.player = this.physics.add.sprite(260, 1450, 'player_texture', 1);
+        // 1. Cargamos posición desde el Registry (Persistencia)
+        const spawnX = this.registry.get('playerX') || 260;
+        const spawnY = this.registry.get('playerY') || 1450;
+
+        this.player = this.physics.add.sprite(spawnX, spawnY, 'player_texture', 1);
         this.player.body.setSize(16, 12).setOffset(5, 35);
         this.createAnimations();
 
@@ -82,31 +86,36 @@ export class GameScene extends Phaser.Scene {
         this.crearDPadCruceta();
 
         // --- BOTONES DE INTERACCIÓN ---
-        // Imagen del mensaje
         this.msgCedula = this.add.image(930, 150, 'cedula_msg').setDepth(200).setVisible(false).setScale(0.5);
 
-        // Botón A (Cédula) - Posición (920, 100)
-        this.btnA = this.add.image(920, 100, 'btn_interactuar').setInteractive().setScale(0.5).setDepth(100).setVisible(false);
-        this.btnA.usado = false;
+        // 2. Cargamos el estado de los botones desde el Registry (Persistencia)
+        this.btnA_usado = this.registry.get('btnA_usado') || false;
+        this.btnB_usado = this.registry.get('btnB_usado') || false;
 
+        // Botón A (Cédula)
+        this.btnA = this.add.image(920, 100, 'btn_interactuar').setInteractive().setScale(0.5).setDepth(100).setVisible(false);
         this.btnA.on('pointerdown', () => {
-            this.btnA.usado = true;
+            this.btnA_usado = true;
+            this.registry.set('btnA_usado', true); // Guardamos en memoria global
             this.btnA.setVisible(false);
             
-            // Mostrar mensaje por 5 segundos
             this.msgCedula.setVisible(true);
             this.time.delayedCall(3000, () => {
                 this.msgCedula.setVisible(false);
             });
         });
 
-        // Botón B (Votación) - Posición (1555, 82)
+        // Botón B (Votación)
         this.btnB = this.add.image(1555, 82, 'btn_interactuar').setInteractive().setScale(0.5).setDepth(100).setVisible(false);
-        this.btnB.usado = false;
-
         this.btnB.on('pointerdown', () => {
-            this.btnB.usado = true;
+            this.btnB_usado = true;
+            this.registry.set('btnB_usado', true); // Guardamos en memoria global
             this.btnB.setVisible(false);
+            
+            // Guardamos posición exacta para volver aquí mismo
+            this.registry.set('playerX', this.player.x);
+            this.registry.set('playerY', this.player.y);
+            
             this.scene.start('VotingScene');
         });
     }
@@ -153,7 +162,7 @@ export class GameScene extends Phaser.Scene {
         this.player.setVelocity(0);
         let mov = false;
 
-        // Movimiento
+        // Movimiento (Teclado + Táctil)
         if (this.teclas.A.isDown || this.touchControl.left) {
             this.player.setVelocityX(-speed);
             this.player.anims.play('walk-left', true);
@@ -174,17 +183,21 @@ export class GameScene extends Phaser.Scene {
             mov = true;
         }
 
-        // --- LÓGICA DE PROXIMIDAD ---
-        // Botón A
-        if (!this.btnA.usado) {
+        // --- LÓGICA DE PROXIMIDAD Y PERSISTENCIA ---
+        // Botón A: Solo si no se ha usado
+        if (!this.btnA_usado) {
             const distA = Phaser.Math.Distance.Between(this.player.x, this.player.y, this.btnA.x, this.btnA.y);
             this.btnA.setVisible(distA < 30);
+        } else {
+            this.btnA.setVisible(false);
         }
 
-        // Botón B
-        if (!this.btnB.usado) {
+        // Botón B: Solo si el A ya se usó y el B sigue libre
+        if (this.btnA_usado && !this.btnB_usado) {
             const distB = Phaser.Math.Distance.Between(this.player.x, this.player.y, this.btnB.x, this.btnB.y);
             this.btnB.setVisible(distB < 30);
+        } else {
+            this.btnB.setVisible(false);
         }
 
         // Ánfora
