@@ -17,6 +17,22 @@ export class GameScene extends Phaser.Scene {
         // --- MENSAJES ---
         this.load.image('cedula_msg', '../../assets/images/cedula-msg.png');
         this.load.image('validacion_beta_msg', '../../assets/images/validacion-beta-msg.png');
+        
+        // Carga de la imagen de diálogo/apoyo
+        this.load.image('apoyo1', '../../assets/images/apoyo1.png');
+        this.load.image('apoyo2', '../../assets/images/apoyo2.png');
+        this.load.image('apoyo3', '../../assets/images/apoyo3.png');
+
+        // --- NPC ---
+        this.load.image('personero1', '../../assets/characters/personero1.png');
+        this.load.image('personero2', '../../assets/characters/personero2.png');
+        this.load.image('personero3', '../../assets/characters/personero3.png');
+        this.load.image('npc1', '../../assets/characters/npc1.png');
+        this.load.image('npc2', '../../assets/characters/npc2.png');
+        this.load.image('npc3', '../../assets/characters/npc3.png');
+        this.load.image('npc4', '../../assets/characters/npc4.png');
+        this.load.image('npc5', '../../assets/characters/npc5.png');
+        this.load.image('npc6', '../../assets/characters/npc6.png');
     }
 
     create() {
@@ -42,10 +58,27 @@ export class GameScene extends Phaser.Scene {
         paredesLayer.setCollisionByProperty({ collides: true });
         if (objetosLayer) objetosLayer.setCollisionByProperty({ collides: true });
 
+        // --- NPC CON COLISIÓN ---
+        this.npcsGroup = this.physics.add.staticGroup();
+        this.npcsGroup.create(920, 68, 'personero1').refreshBody();
+        this.npcsGroup.create(960, 68, 'personero2').setScale(1.1).refreshBody();
+        this.npcsGroup.create(1000, 69, 'personero3').refreshBody();
+        this.npcsGroup.create(150, 950, 'npc1').refreshBody();
+        this.npcsGroup.create(190, 952, 'npc2').refreshBody();
+        this.npcsGroup.create(1100, 830, 'npc3').refreshBody();
+        this.npcsGroup.create(1140, 830, 'npc4').refreshBody();
+        this.npcsGroup.create(450, 630, 'npc5').refreshBody();
+        this.npcsGroup.create(490, 630, 'npc6').refreshBody();
+
+        // --- IMAGEN DE APOYO/DIÁLOGO ---
+        // Nace invisible en la posición (150, 970)
+        this.dialogoApoyo = this.add.image(210, 900, 'apoyo1').setDepth(300).setVisible(false).setScale(0.6);
+        this.dialogoApoyo2 = this.add.image(510, 580, 'apoyo2').setDepth(300).setVisible(false).setScale(0.6);
+        this.dialogoApoyo3 = this.add.image(1150, 780, 'apoyo3').setDepth(300).setVisible(false).setScale(0.6);
+
         // --- GENERACIÓN DE FRAMES DEL PERSONAJE ---
         const texture = this.textures.get('player_texture');
-        const fW = 35; 
-        const fH = 47.5; 
+        const fW = 35; const fH = 47.5; 
         for (let r = 0; r < 4; r++) {
             for (let c = 0; c < 3; c++) {
                 const i = (r * 3) + c;
@@ -54,21 +87,22 @@ export class GameScene extends Phaser.Scene {
         }
 
         // --- ENTIDADES Y FÍSICA ---
-        // 1. Cargamos posición desde el Registry
         const spawnX = this.registry.get('playerX') || 260;
         const spawnY = this.registry.get('playerY') || 1450;
 
         this.player = this.physics.add.sprite(spawnX, spawnY, 'player_texture', 1);
         this.player.body.setSize(16, 12).setOffset(5, 35);
+        this.player.setDepth(10); 
         this.createAnimations();
 
         this.physics.add.collider(this.player, paredesLayer);
         if (objetosLayer) this.physics.add.collider(this.player, objetosLayer);
+        this.physics.add.collider(this.player, this.npcsGroup);
         
-        // --- CÁMARA CON ZOOM ALTO ---
+        // --- CÁMARA ---
         this.cameras.main.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
         this.cameras.main.startFollow(this.player, true, 0.08, 0.08);
-        this.cameras.main.setZoom(2.8); // Zoom alto
+        this.cameras.main.setZoom(2.8);
 
         // --- CONTROLES ---
         this.teclas = this.input.keyboard.addKeys('W,A,S,D');
@@ -88,8 +122,7 @@ export class GameScene extends Phaser.Scene {
         this.btnB_usado = this.registry.get('btnB_usado') || false;
         this.btnC_usado = this.registry.get('btnC_usado') || false;
 
-        // --- BOTONES DE INTERACCIÓN (MUNDO) ---
-
+        // --- BOTONES DE INTERACCIÓN ---
         this.btnA = this.add.image(920, 100, 'btn_interactuar').setInteractive().setScale(0.5).setDepth(100).setVisible(false);
         this.btnA.on('pointerdown', () => {
             this.btnA_usado = true;
@@ -115,66 +148,13 @@ export class GameScene extends Phaser.Scene {
             this.registry.set('btnC_usado', true);
             this.btnC.setVisible(false);
             this.msgValidacion.setVisible(true);
-            
-            // Esperamos los 3 segundos del mensaje y mostramos el resultado final
             this.time.delayedCall(3000, () => {
                 this.msgValidacion.setVisible(false);
-                this.mostrarVentanaResultado();
+                const esCorrecto = this.registry.get('votoEspecial') || false;
+                if (esCorrecto) this.scene.start('WinScene');
+                else this.scene.start('LoseScene');
             });
         });
-    }
-
-    // --- NUEVA VENTANA DE RESULTADO ESTILIZADA Y FIJA (IGNORA ZOOM) ---
-    mostrarVentanaResultado() {
-        const { width, height } = this.scale;
-        const esCorrecto = this.registry.get('votoEspecial') || false;
-        
-        // Bloqueamos movimiento del player
-        this.player.setVelocity(0);
-        this.player.anims.stop();
-
-        // Contenedor principal que ignora el Zoom de la cámara
-        const resultadoCont = this.add.container(0, 0).setDepth(10000).setScrollFactor(0);
-
-        // 1. Fondo oscurecido (Overlay) igual que en VotingScene
-        // Escalado para cubrir toda la pantalla independientemente del zoom
-        const bg = this.add.rectangle(width/2, height/2, width * 3, height * 3, 0x000000, 0.7).setInteractive();
-
-        // 2. Ventana blanca central PEQUEÑA (Similar a la de confirmación de voto)
-        const winBox = this.add.rectangle(width/2, height/2, 400, 200, 0xffffff).setStrokeStyle(4, 0x000000);
-        
-        // 3. Texto del resultado
-        const textoFinal = esCorrecto ? 'HAS GANADO.\nFELICIDADES!!!!!' : 'VOTO INCORRECTO';
-        const colorTexto = esCorrecto ? '#00aa00' : '#ff0000'; // Verde ganador, Rojo perdedor
-
-        const txt = this.add.text(width/2, height/2 - 30, textoFinal, {
-            fontSize: '28px', color: colorTexto, align: 'center', fontStyle: 'bold', fontFamily: 'Arial'
-        }).setOrigin(0.5);
-
-        resultadoCont.add([bg, winBox, txt]);
-
-        // 4. Botón de Reintentar (Solo aparece si perdió)
-        if (!esCorrecto) {
-            // Rectángulo interactivo gris
-            const btnReiniciar = this.add.rectangle(width/2, height/2 + 50, 150, 40, 0xeeeeee).setInteractive().setStrokeStyle(2, 0x000000);
-            const txtReiniciar = this.add.text(width/2, height/2 + 50, 'Reintentar', { fontSize: '20px', color: '#000', fontWeight: 'bold' }).setOrigin(0.5);
-            
-            // LÓGICA DE REINICIO CORREGIDA: Limpieza manual de datos
-            btnReiniciar.on('pointerdown', () => {
-                // Seteamos manualmente los valores por defecto
-                this.registry.set('btnA_usado', false);
-                this.registry.set('btnB_usado', false);
-                this.registry.set('btnC_usado', false);
-                this.registry.set('playerX', 260); 
-                this.registry.set('playerY', 1450);
-                this.registry.set('votoEspecial', false);
-                
-                // Reiniciamos la escena actual
-                this.scene.restart();
-            });
-            
-            resultadoCont.add([btnReiniciar, txtReiniciar]);
-        }
     }
 
     crearDPadCruceta() {
@@ -213,6 +193,30 @@ export class GameScene extends Phaser.Scene {
         if (this.teclas.W.isDown || this.touchControl.up) { this.player.setVelocityY(-speed); if (!mov) this.player.anims.play('walk-up', true); mov = true; }
         else if (this.teclas.S.isDown || this.touchControl.down) { this.player.setVelocityY(speed); if (!mov) this.player.anims.play('walk-down', true); mov = true; }
 
+        // --- LÓGICA DE PROXIMIDAD PARA DIÁLOGO (apoyo1.png) ---
+        const distApoyo = Phaser.Math.Distance.Between(this.player.x, this.player.y, 190, 950);
+        const distApoyo2 = Phaser.Math.Distance.Between(this.player.x, this.player.y, 450, 630);
+        const distApoyo3 = Phaser.Math.Distance.Between(this.player.x, this.player.y, 1100, 800);
+        // Si el jugador está a menos de 40 píxeles, la imagen aparece
+        if (distApoyo < 60) {
+            this.dialogoApoyo.setVisible(true);
+        } else {
+            this.dialogoApoyo.setVisible(false);
+        }
+
+        if (distApoyo2 < 60) {
+            this.dialogoApoyo2.setVisible(true);
+        } else {
+            this.dialogoApoyo2.setVisible(false);
+        }
+
+        if (distApoyo3 < 60) {
+            this.dialogoApoyo3.setVisible(true);
+        } else {
+            this.dialogoApoyo3.setVisible(false);
+        }
+
+        // --- VISIBILIDAD BOTONES ---
         if (!this.btnA_usado) {
             const distA = Phaser.Math.Distance.Between(this.player.x, this.player.y, this.btnA.x, this.btnA.y);
             this.btnA.setVisible(distA < 30);
