@@ -1,6 +1,8 @@
 export class GameScene extends Phaser.Scene {
     constructor() {
         super('GameScene');
+        this.isResolvingFinal = false;
+        this.npcHintCooldownUntil = 0;
     }
 
     preload() {
@@ -36,6 +38,11 @@ export class GameScene extends Phaser.Scene {
     }
 
     create() {
+        // Resetear flags de instancia que NO se reinician con scene.start()
+        // (el constructor solo corre una vez al instanciar, no al reiniciar la escena).
+        this.isResolvingFinal = false;
+        this.npcHintCooldownUntil = 0;
+
         const { width, height } = this.scale;
 
         // --- CONFIGURACIÓN DEL MAPA ---
@@ -48,12 +55,39 @@ export class GameScene extends Phaser.Scene {
         const objetosLayer = map.createLayer('Objetos', allTilesets, 0, 0); 
         const decoracionesLayer = map.createLayer('Decoraciones', allTilesets, 0, 0); 
 
-        this.anforaPos = null;
+        // Punto de interaccion de la mesa de votacion (tiles de votacion.png).
+        const votacionTileIds = new Set([102, 103, 104, 105]);
+        const votacionTiles = [];
         decoracionesLayer.forEachTile(tile => {
-            if (tile.index >= 94 && tile.index <= 97) {
-                if (!this.anforaPos) this.anforaPos = { x: tile.getCenterX(), y: tile.getCenterY() };
+            if (votacionTileIds.has(tile.index)) {
+                votacionTiles.push({ x: tile.getCenterX(), y: tile.getCenterY() });
             }
         });
+
+        if (votacionTiles.length > 0) {
+            const xs = votacionTiles.map(p => p.x);
+            const ys = votacionTiles.map(p => p.y);
+            const minX = Math.min(...xs);
+            const maxX = Math.max(...xs);
+            const minY = Math.min(...ys);
+            const maxY = Math.max(...ys);
+
+            this.anforaPos = {
+                x: (minX + maxX) / 2,
+                y: (minY + maxY) / 2
+            };
+
+            // Radio dinamico: diagonal del bloque + margen amplio para comodidad.
+            const halfW = (maxX - minX) / 2;
+            const halfH = (maxY - minY) / 2;
+            this.anforaInteractionRadius = Math.max(130, Math.sqrt((halfW * halfW) + (halfH * halfH)) + 72);
+        } else {
+            // Fallback defensivo si cambia el mapa o IDs.
+            this.anforaPos = { x: 1504, y: 96 };
+            this.anforaInteractionRadius = 130;
+        }
+
+        this.mesaPos = { x: 920, y: 100 };
 
         paredesLayer.setCollisionByProperty({ collides: true });
         if (objetosLayer) objetosLayer.setCollisionByProperty({ collides: true });
@@ -105,11 +139,33 @@ export class GameScene extends Phaser.Scene {
         this.cameras.main.setZoom(2.8);
 
         // --- CONTROLES ---
-        this.teclas = this.input.keyboard.addKeys('W,A,S,D');
-        this.teclaE = this.input.keyboard.addKey('E');
-        this.interactionPrompt = this.add.text(width / 2, height - 100, 'Presiona E para votar', {
-            fontSize: '24px', color: '#ffffff', backgroundColor: '#000000', padding: { x: 10, y: 5 }
-        }).setOrigin(0.5).setScrollFactor(0).setVisible(false).setAlpha(0.8);
+        // enableCapture=false para no bloquear WASD/E en inputs HTML (formulario final).
+        this.teclas = this.input.keyboard.addKeys('W,A,S,D', false);
+        this.teclaE = this.input.keyboard.addKey('E', false);
+        this.interactionPrompt = this.add.text(width / 2, height - 100, '', {
+            fontSize: '20px',
+            color: '#ffffff',
+            backgroundColor: '#000000',
+            padding: { x: 10, y: 5 },
+            align: 'center'
+        }).setOrigin(0.5).setScrollFactor(0).setVisible(false).setAlpha(0.85);
+
+        this.systemMessage = this.add.text(width / 2, 40, '', {
+            fontSize: '18px',
+            color: '#fff8c6',
+            backgroundColor: '#111111',
+            padding: { x: 10, y: 6 },
+            align: 'center'
+        }).setOrigin(0.5).setScrollFactor(0).setVisible(false).setDepth(999);
+
+        this.playerSpeech = this.add.text(this.player.x, this.player.y - 55, '', {
+            fontSize: '15px',
+            color: '#111111',
+            backgroundColor: '#ffffff',
+            padding: { x: 8, y: 5 },
+            wordWrap: { width: 260 },
+            align: 'center'
+        }).setOrigin(0.5).setVisible(false).setDepth(400);
 
         this.crearDPadCruceta();
 
@@ -117,44 +173,62 @@ export class GameScene extends Phaser.Scene {
         this.msgCedula = this.add.image(930, 150, 'cedula_msg').setDepth(200).setVisible(false).setScale(0.5);
         this.msgValidacion = this.add.image(930, 150, 'validacion_beta_msg').setDepth(200).setVisible(false).setScale(0.5);
 
-        // --- PERSISTENCIA DE ESTADOS ---
-        this.btnA_usado = this.registry.get('btnA_usado') || false;
-        this.btnB_usado = this.registry.get('btnB_usado') || false;
-        this.btnC_usado = this.registry.get('btnC_usado') || false;
+        // --- PERSISTENCIA DE ESTADOS DEL FLUJO ---
+        this.tieneCedula = this.registry.get('tieneCedula');
+        this.votoRealizado = this.registry.get('votoRealizado');
+        this.votoEntregado = this.registry.get('votoEntregado');
 
-        // --- BOTONES DE INTERACCIÓN ---
-        this.btnA = this.add.image(920, 100, 'btn_interactuar').setInteractive().setScale(0.5).setDepth(100).setVisible(false);
-        this.btnA.on('pointerdown', () => {
-            this.btnA_usado = true;
-            this.registry.set('btnA_usado', true);
-            this.btnA.setVisible(false);
-            this.msgCedula.setVisible(true);
-            this.time.delayedCall(3000, () => this.msgCedula.setVisible(false));
-        });
+        // Compatibilidad con estados antiguos si existen.
+        if (typeof this.tieneCedula !== 'boolean') this.tieneCedula = this.registry.get('btnA_usado') || false;
+        if (typeof this.votoRealizado !== 'boolean') this.votoRealizado = this.registry.get('btnB_usado') || false;
+        if (typeof this.votoEntregado !== 'boolean') this.votoEntregado = this.registry.get('btnC_usado') || false;
 
-        this.btnB = this.add.image(1555, 82, 'btn_interactuar').setInteractive().setScale(0.5).setDepth(100).setVisible(false);
-        this.btnB.on('pointerdown', () => {
-            this.btnB_usado = true;
-            this.registry.set('btnB_usado', true);
-            this.btnB.setVisible(false);
+        this.registry.set('tieneCedula', this.tieneCedula);
+        this.registry.set('votoRealizado', this.votoRealizado);
+        this.registry.set('votoEntregado', this.votoEntregado);
+
+        // --- BOTONES DE INTERACCION (TACTIL) ---
+        this.btnMesa = this.add.image(this.mesaPos.x, this.mesaPos.y, 'btn_interactuar')
+            .setInteractive()
+            .setScale(0.5)
+            .setDepth(100)
+            .setVisible(false);
+        this.btnMesa.on('pointerdown', () => this.handleMesaInteraction());
+
+        this.btnAnfora = this.add.image(this.anforaPos.x, this.anforaPos.y, 'btn_interactuar')
+            .setInteractive()
+            .setScale(0.5)
+            .setDepth(100)
+            .setVisible(false);
+        this.btnAnfora.on('pointerdown', () => this.handleAnforaInteraction());
+
+        // Boton de salida rapida.
+        const btnSalir = this.add.rectangle(width - 70, 30, 120, 38, 0x8f1022)
+            .setScrollFactor(0)
+            .setInteractive({ useHandCursor: true })
+            .setDepth(500)
+            .setStrokeStyle(2, 0xffffff);
+        const txtSalir = this.add.text(width - 70, 30, 'Salir', {
+            fontSize: '18px',
+            color: '#ffffff',
+            fontFamily: 'Arial',
+            fontStyle: 'bold'
+        }).setOrigin(0.5).setScrollFactor(0).setDepth(501);
+        btnSalir.on('pointerdown', () => {
             this.registry.set('playerX', this.player.x);
             this.registry.set('playerY', this.player.y);
-            this.scene.start('VotingScene');
+            this.scene.start('MenuScene');
         });
 
-        this.btnC = this.add.image(920, 100, 'btn_interactuar').setInteractive().setScale(0.5).setDepth(100).setVisible(false);
-        this.btnC.on('pointerdown', () => {
-            this.btnC_usado = true;
-            this.registry.set('btnC_usado', true);
-            this.btnC.setVisible(false);
-            this.msgValidacion.setVisible(true);
-            this.time.delayedCall(3000, () => {
-                this.msgValidacion.setVisible(false);
-                const esCorrecto = this.registry.get('votoEspecial') || false;
-                if (esCorrecto) this.scene.start('WinScene');
-                else this.scene.start('LoseScene');
-            });
-        });
+        if (this.registry.get('mostrarMensajeRetorno')) {
+            this.registry.set('mostrarMensajeRetorno', false);
+            this.showPlayerSpeech('Ahora tengo que regresar a dejar mi cartilla.', 3500);
+            this.showSystemMessage('Vuelve donde los miembros de mesa para entregar tu cartilla.', 3500);
+        }
+
+        if (!this.tieneCedula) {
+            this.showSystemMessage('Miembros de mesa: Acercate y recoge tu cedula para votar.', 2800);
+        }
     }
 
     crearDPadCruceta() {
@@ -193,11 +267,10 @@ export class GameScene extends Phaser.Scene {
         if (this.teclas.W.isDown || this.touchControl.up) { this.player.setVelocityY(-speed); if (!mov) this.player.anims.play('walk-up', true); mov = true; }
         else if (this.teclas.S.isDown || this.touchControl.down) { this.player.setVelocityY(speed); if (!mov) this.player.anims.play('walk-down', true); mov = true; }
 
-        // --- LÓGICA DE PROXIMIDAD PARA DIÁLOGO (apoyo1.png) ---
+        // --- LOGICA DE PROXIMIDAD PARA DIALOGO (apoyo1.png) ---
         const distApoyo = Phaser.Math.Distance.Between(this.player.x, this.player.y, 190, 950);
         const distApoyo2 = Phaser.Math.Distance.Between(this.player.x, this.player.y, 450, 630);
         const distApoyo3 = Phaser.Math.Distance.Between(this.player.x, this.player.y, 1100, 800);
-        // Si el jugador está a menos de 40 píxeles, la imagen aparece
         if (distApoyo < 60) {
             this.dialogoApoyo.setVisible(true);
         } else {
@@ -216,33 +289,122 @@ export class GameScene extends Phaser.Scene {
             this.dialogoApoyo3.setVisible(false);
         }
 
-        // --- VISIBILIDAD BOTONES ---
-        if (!this.btnA_usado) {
-            const distA = Phaser.Math.Distance.Between(this.player.x, this.player.y, this.btnA.x, this.btnA.y);
-            this.btnA.setVisible(distA < 30);
-        } else this.btnA.setVisible(false);
+        const distMesa = Phaser.Math.Distance.Between(this.player.x, this.player.y, this.mesaPos.x, this.mesaPos.y);
+        const distAnfora = Phaser.Math.Distance.Between(this.player.x, this.player.y, this.anforaPos.x, this.anforaPos.y);
 
-        if (this.btnA_usado && !this.btnB_usado) {
-            const distB = Phaser.Math.Distance.Between(this.player.x, this.player.y, this.btnB.x, this.btnB.y);
-            this.btnB.setVisible(distB < 30);
-        } else this.btnB.setVisible(false);
+        // --- MENSAJE GUIA DE NPCS ---
+        if (this.tieneCedula && !this.votoRealizado && (distApoyo < 70 || distApoyo2 < 70 || distApoyo3 < 70)) {
+            if (this.time.now >= this.npcHintCooldownUntil) {
+                this.npcHintCooldownUntil = this.time.now + 4500;
+                this.showSystemMessage('NPC: Ve por tu derecha, marca tu voto y luego regresa a la mesa.', 3200);
+            }
+        }
 
-        if (this.btnB_usado && !this.btnC_usado) {
-            const distC = Phaser.Math.Distance.Between(this.player.x, this.player.y, this.btnC.x, this.btnC.y);
-            this.btnC.setVisible(distC < 30);
-        } else this.btnC.setVisible(false);
+        // --- VISIBILIDAD DE BOTONES INTERACTIVOS ---
+        this.btnMesa.setVisible(distMesa < 35);
+        this.btnAnfora.setVisible(this.tieneCedula && !this.votoRealizado && distAnfora < 100);
 
-        if (this.anforaPos) {
-            const distAnfora = Phaser.Math.Distance.Between(this.player.x, this.player.y, this.anforaPos.x, this.anforaPos.y);
-            if (distAnfora < 60) {
-                this.interactionPrompt.setVisible(true);
-                if (Phaser.Input.Keyboard.JustDown(this.teclaE)) this.scene.start('VotingScene');
-            } else this.interactionPrompt.setVisible(false);
+        // --- PROMPT CONTEXTUAL ---
+        if (distMesa < 70) {
+            if (!this.tieneCedula) this.setPrompt('Presiona E o boton para recoger tu cedula');
+            else if (this.votoRealizado && !this.votoEntregado) this.setPrompt('Presiona E o boton para entregar tu cartilla');
+            else if (!this.votoRealizado) this.setPrompt('Miembros de mesa: ve a tu derecha para marcar tu voto');
+            else this.hidePrompt();
+        } else if (distAnfora < this.anforaInteractionRadius) {
+            if (!this.tieneCedula) this.setPrompt('Primero recoge tu cedula con los miembros de mesa');
+            else if (!this.votoRealizado) this.setPrompt('Presiona E o boton para marcar en la mesa de votacion');
+            else this.setPrompt('Ya marcaste tu voto. Regresa a la mesa');
+        } else {
+            this.hidePrompt();
+        }
+
+        if (Phaser.Input.Keyboard.JustDown(this.teclaE)) {
+            if (distMesa < 70) this.handleMesaInteraction();
+            else if (distAnfora < this.anforaInteractionRadius) this.handleAnforaInteraction();
+        }
+
+        if (this.playerSpeech.visible) {
+            this.playerSpeech.setPosition(this.player.x, this.player.y - 52);
         }
 
         if (!mov) {
             this.player.anims.stop();
             if (this.player.anims.currentAnim) this.player.setFrame(this.player.anims.currentAnim.frames[1].frame.name);
         }
+    }
+
+    setPrompt(text) {
+        this.interactionPrompt.setText(text).setVisible(true);
+    }
+
+    hidePrompt() {
+        this.interactionPrompt.setVisible(false);
+    }
+
+    showSystemMessage(text, duration = 2500) {
+        this.systemMessage.setText(text).setVisible(true);
+        if (this.systemMessageTimer) this.systemMessageTimer.remove(false);
+        this.systemMessageTimer = this.time.delayedCall(duration, () => {
+            this.systemMessage.setVisible(false);
+        });
+    }
+
+    showPlayerSpeech(text, duration = 2500) {
+        this.playerSpeech.setText(text).setVisible(true);
+        if (this.playerSpeechTimer) this.playerSpeechTimer.remove(false);
+        this.playerSpeechTimer = this.time.delayedCall(duration, () => {
+            this.playerSpeech.setVisible(false);
+        });
+    }
+
+    handleMesaInteraction() {
+        if (this.isResolvingFinal) return;
+
+        if (!this.tieneCedula) {
+            this.tieneCedula = true;
+            this.registry.set('tieneCedula', true);
+            this.registry.set('btnA_usado', true);
+            this.msgCedula.setVisible(true);
+            this.time.delayedCall(2200, () => this.msgCedula.setVisible(false));
+            this.showSystemMessage('Miembros de mesa: Ve por tu derecha, marca y luego regresa.', 3200);
+            this.showPlayerSpeech('Voy a la mesa de votacion de la derecha y luego regreso.', 3200);
+            return;
+        }
+
+        if (!this.votoRealizado) {
+            this.showSystemMessage('Miembros de mesa: Aun no marcas tu voto. Ve a la derecha.', 2600);
+            this.showPlayerSpeech('Todavia no voto. Debo ir a marcar.', 2400);
+            return;
+        }
+
+        if (!this.votoEntregado) {
+            this.isResolvingFinal = true;
+            this.votoEntregado = true;
+            this.registry.set('votoEntregado', true);
+            this.registry.set('btnC_usado', true);
+            this.msgValidacion.setVisible(true);
+            this.showPlayerSpeech('Listo, ahora esperan la validacion final.', 2400);
+            this.time.delayedCall(1800, () => {
+                this.msgValidacion.setVisible(false);
+                const esCorrecto = this.registry.get('votoEspecial') || false;
+                if (esCorrecto) this.scene.start('WinScene');
+                else this.scene.start('LoseScene');
+            });
+        }
+    }
+
+    handleAnforaInteraction() {
+        if (!this.tieneCedula) {
+            this.showSystemMessage('Primero recoge tu cedula con los miembros de mesa.', 2200);
+            return;
+        }
+        if (this.votoRealizado) {
+            this.showSystemMessage('Ya marcaste tu voto. Regresa a entregar tu cartilla.', 2200);
+            return;
+        }
+
+        this.registry.set('playerX', this.player.x);
+        this.registry.set('playerY', this.player.y);
+        this.scene.start('VotingScene');
     }
 }

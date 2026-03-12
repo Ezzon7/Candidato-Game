@@ -10,6 +10,7 @@ export class VotingScene extends Phaser.Scene {
         ];
         this.votes = {}; 
         this.inputActive = null;
+        this.voteLocked = false;
     }
 
     preload() {
@@ -22,6 +23,11 @@ export class VotingScene extends Phaser.Scene {
     }
 
     create() {
+        // Resetear flags de instancia que persisten entre reinicios de escena.
+        this.voteLocked = false;
+        this.votes = {};
+        this.inputActive = null;
+
         const { width, height } = this.scale;
         
         // Fondo y Tarjeta
@@ -83,6 +89,18 @@ export class VotingScene extends Phaser.Scene {
         this.add.text(width/2 + 100, height/2 + 240, 'Limpiar', { fontSize: '22px', color: '#000', fontStyle: 'bold' }).setOrigin(0.5);
         btnClean.on('pointerdown', () => this.clearBallot());
 
+        // Boton para salir de la mecanica y volver al mapa sin mover posicion.
+        const btnSalir = this.add.rectangle(width - 65, 34, 110, 40, 0x8f1022)
+            .setInteractive({ useHandCursor: true })
+            .setStrokeStyle(2, 0xffffff);
+        this.add.text(width - 65, 34, 'Salir', {
+            fontSize: '20px',
+            color: '#ffffff',
+            fontFamily: 'Arial',
+            fontStyle: 'bold'
+        }).setOrigin(0.5);
+        btnSalir.on('pointerdown', () => this.returnToGame());
+
         // --- VENTANA DE CONFIRMACIÓN (Modal) ---
         this.confirmContainer = this.add.container(0, 0).setDepth(1000).setVisible(false);
         const modalBg = this.add.rectangle(width/2, height/2, width, height, 0x000000, 0.6).setInteractive();
@@ -119,6 +137,13 @@ export class VotingScene extends Phaser.Scene {
             }
         });
 
+        this.add.text(width / 2, 28, 'Marca tu voto y luego regresa a entregar tu cartilla', {
+            fontSize: '18px',
+            color: '#222222',
+            fontFamily: 'Arial',
+            fontStyle: 'bold'
+        }).setOrigin(0.5);
+
         this.feedback = this.add.text(width/2, height/2 + 290, '', { fontSize: '20px', color: '#ff0000', fontStyle: 'bold' }).setOrigin(0.5);
     }
 
@@ -127,6 +152,7 @@ export class VotingScene extends Phaser.Scene {
     }
 
     clearBallot() {
+        if (this.voteLocked) return;
         this.candidates.forEach(can => {
             this.votes[can.id].marked = false;
             this.votes[can.id].number = '';
@@ -141,6 +167,8 @@ export class VotingScene extends Phaser.Scene {
 
     // --- VALIDACIÓN DE VOTOS ---
     validateVote() {
+        if (this.voteLocked) return;
+
         // Filtrar qué IDs tienen algo marcado o algún número escrito
         const selected = Object.keys(this.votes).filter(id => this.votes[id].marked || this.votes[id].number !== '');
         
@@ -167,12 +195,14 @@ export class VotingScene extends Phaser.Scene {
             this.registry.set('votoEspecial', false); // Boolean en FALSE (votó por otro o con otro número)
         }
 
-        this.feedback.setText("¡VOTO VÁLIDO!").setColor('#00ff00');
-        
-        // Retorno automático tras 3 segundos
-        this.time.delayedCall(3000, () => {
-            this.scene.start('GameScene');
-        });
+        this.voteLocked = true;
+        this.registry.set('votoRealizado', true);
+        this.registry.set('btnB_usado', true);
+        this.registry.set('mostrarMensajeRetorno', true);
+        this.feedback.setText('Voto valido. Regresa a dejar tu cartilla.').setColor('#008800');
+
+        // Retorno automatico al mapa en la misma zona.
+        this.time.delayedCall(1300, () => this.returnToGame());
     }
 
     // --- MINIJUEGO DE DIBUJO ---
@@ -229,5 +259,9 @@ export class VotingScene extends Phaser.Scene {
     showMessage(txt) {
         this.feedback.setText(txt).setColor('#ff0000');
         this.time.delayedCall(2000, () => { if (this.feedback.text === txt) this.feedback.setText(''); });
+    }
+
+    returnToGame() {
+        this.scene.start('GameScene');
     }
 }

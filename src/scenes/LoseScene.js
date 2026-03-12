@@ -26,6 +26,10 @@ export class LoseScene extends Phaser.Scene {
             this.registry.set('btnA_usado', false);
             this.registry.set('btnB_usado', false);
             this.registry.set('btnC_usado', false);
+            this.registry.set('tieneCedula', false);
+            this.registry.set('votoRealizado', false);
+            this.registry.set('votoEntregado', false);
+            this.registry.set('mostrarMensajeRetorno', false);
             this.registry.set('playerX', 260); // Volver al inicio de la escuela
             this.registry.set('playerY', 1450);
             this.registry.set('votoEspecial', false);

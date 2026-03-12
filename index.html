@@ -1,15 +1,137 @@
 <!DOCTYPE html>
-    <html lang="en">
+    <html lang="es">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-        <title>Candidato-Game</title>
+        <title>¡Aprende a Votar! – ONPE</title>
         <style>
             canvas {
             touch-action: none;
             -webkit-touch-callout: none;
             -webkit-user-select: none;
             user-select: none;
+            }
+
+            /* ─── FORMULARIO DE REGISTRO ─────────────────────────────────────── */
+            #registro-overlay {
+                display: none;
+                position: fixed;
+                inset: 0;
+                background: rgba(0, 0, 0, 0.78);
+                z-index: 9999;
+                align-items: center;
+                justify-content: center;
+                padding: 16px;
+            }
+            #registro-overlay.visible {
+                display: flex;
+            }
+            #registro-card {
+                background: #ffffff;
+                border-radius: 14px;
+                padding: 28px 32px 24px;
+                width: 100%;
+                max-width: 420px;
+                box-shadow: 0 8px 40px rgba(0,0,0,0.45);
+                position: relative;
+                max-height: 95vh;
+                overflow-y: auto;
+            }
+            #registro-card .reg-header {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                margin-bottom: 6px;
+            }
+            #registro-card .reg-header h2 {
+                font-size: 22px;
+                color: #C8102E;
+                font-family: Arial, sans-serif;
+                font-weight: bold;
+                margin: 0;
+            }
+            #registro-card .reg-subtitle {
+                font-size: 14px;
+                color: #555;
+                font-family: Arial, sans-serif;
+                margin-bottom: 18px;
+            }
+            #registro-card .campo {
+                margin-bottom: 14px;
+            }
+            #registro-card label {
+                display: block;
+                font-size: 13px;
+                font-weight: bold;
+                color: #333;
+                font-family: Arial, sans-serif;
+                margin-bottom: 5px;
+            }
+            #registro-card input,
+            #registro-card select {
+                width: 100%;
+                padding: 11px 13px;
+                border: 2px solid #ddd;
+                border-radius: 8px;
+                font-size: 15px;
+                font-family: Arial, sans-serif;
+                box-sizing: border-box;
+                transition: border-color 0.2s;
+                appearance: none;
+                -webkit-appearance: none;
+            }
+            #registro-card input:focus,
+            #registro-card select:focus {
+                outline: none;
+                border-color: #C8102E;
+            }
+            #registro-card input.error {
+                border-color: #e53e3e;
+            }
+            #btn-registrar {
+                width: 100%;
+                padding: 14px;
+                background: #C8102E;
+                color: #fff;
+                border: none;
+                border-radius: 8px;
+                font-size: 17px;
+                font-weight: bold;
+                font-family: Arial, sans-serif;
+                cursor: pointer;
+                margin-top: 8px;
+                transition: background 0.2s;
+            }
+            #btn-registrar:hover { background: #a00e24; }
+            #btn-registrar:disabled { background: #aaa; cursor: not-allowed; }
+            #registro-estado {
+                text-align: center;
+                font-size: 14px;
+                font-family: Arial, sans-serif;
+                margin-top: 12px;
+                min-height: 20px;
+                color: #333;
+            }
+            #registro-estado.exito  { color: #0a8a3e; font-weight: bold; }
+            #registro-estado.error  { color: #c8102e; font-weight: bold; }
+            #btn-cerrar-reg {
+                position: absolute;
+                top: 12px;
+                right: 14px;
+                background: none;
+                border: none;
+                font-size: 22px;
+                cursor: pointer;
+                color: #888;
+                line-height: 1;
+            }
+            #btn-cerrar-reg:hover { color: #C8102E; }
+            .campo-error-msg {
+                color: #e53e3e;
+                font-size: 12px;
+                margin-top: 3px;
+                font-family: Arial, sans-serif;
+                display: none;
             }
 
             *,
@@ -48,8 +170,218 @@
         </style>
     </head>
     <body>
+        <!-- ─── CANVAS DEL JUEGO ─────────────────────────────────────────────── -->
         <div id="game-container"></div>
+
+        <!--
+        ═══════════════════════════════════════════════════════════════════════════
+        FORMULARIO DE REGISTRO – conectado a Google Sheets
+        ═══════════════════════════════════════════════════════════════════════════
+        INSTRUCCIONES PARA CONECTAR CON GOOGLE SHEETS:
+        1. Abre Google Sheets y crea una hoja nueva.
+        2. Ve a Extensiones > Apps Script.
+        3. Borra el código de ejemplo y pega el siguiente código:
+        ─────────────────────────────────────────────────
+        function doPost(e) {
+          var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+          var data  = JSON.parse(e.postData.contents);
+          sheet.appendRow([
+            new Date().toLocaleString('es-PE'),
+            data.nombre,
+            data.apellido,
+            data.celular,
+            data.dni,
+            data.distrito
+          ]);
+          return ContentService
+            .createTextOutput(JSON.stringify({ status: 'ok' }))
+            .setMimeType(ContentService.MimeType.JSON);
+        }
+        ─────────────────────────────────────────────────
+        4. Haz clic en "Implementar" > "Nueva implementación".
+        5. Tipo: "Aplicación web". Ejecutar como: "Yo". Quién tiene acceso: "Cualquier usuario".
+        6. Copia la URL de implementación y pégala en la variable
+           GOOGLE_SCRIPT_URL que está más abajo.
+        ═══════════════════════════════════════════════════════════════════════════
+        -->
+
+        <!-- ─── OVERLAY DEL FORMULARIO ───────────────────────────────────────── -->
+        <div id="registro-overlay" role="dialog" aria-modal="true" aria-labelledby="reg-titulo">
+            <div id="registro-card">
+                <button id="btn-cerrar-reg" aria-label="Cerrar formulario">&times;</button>
+
+                <div class="reg-header">
+                    <span style="font-size:28px;">📋</span>
+                    <h2 id="reg-titulo">Registro de Participante</h2>
+                </div>
+                <p class="reg-subtitle">¡Gracias por participar! Completa tus datos para continuar.</p>
+
+                <form id="registro-form" novalidate>
+                    <div class="campo">
+                        <label for="r-nombre">Nombre <span style="color:#C8102E">*</span></label>
+                        <input type="text" id="r-nombre" placeholder="Tu nombre" autocomplete="given-name" maxlength="60">
+                        <span class="campo-error-msg" id="err-nombre">Ingresa tu nombre.</span>
+                    </div>
+                    <div class="campo">
+                        <label for="r-apellido">Apellido <span style="color:#C8102E">*</span></label>
+                        <input type="text" id="r-apellido" placeholder="Tu apellido" autocomplete="family-name" maxlength="60">
+                        <span class="campo-error-msg" id="err-apellido">Ingresa tu apellido.</span>
+                    </div>
+                    <div class="campo">
+                        <label for="r-celular">Celular <span style="color:#C8102E">*</span></label>
+                        <input type="tel" id="r-celular" placeholder="999 888 777" autocomplete="tel" maxlength="12">
+                        <span class="campo-error-msg" id="err-celular">Ingresa un número de celular válido (9 dígitos).</span>
+                    </div>
+                    <div class="campo">
+                        <label for="r-dni">DNI <span style="color:#C8102E">*</span></label>
+                        <input type="text" id="r-dni" placeholder="12345678" inputmode="numeric" maxlength="8">
+                        <span class="campo-error-msg" id="err-dni">El DNI debe tener exactamente 8 dígitos.</span>
+                    </div>
+                    <div class="campo">
+                        <label for="r-distrito">Distrito <span style="color:#C8102E">*</span></label>
+                        <input type="text" id="r-distrito" placeholder="Tu distrito" autocomplete="address-level3" maxlength="80">
+                        <span class="campo-error-msg" id="err-distrito">Ingresa tu distrito.</span>
+                    </div>
+
+                    <button type="submit" id="btn-registrar">Enviar Registro</button>
+                    <p id="registro-estado" role="status"></p>
+                </form>
+            </div>
+        </div>
+
+        <!-- ─── SCRIPTS ──────────────────────────────────────────────────────── -->
         <script src="./phaser.js"></script>
+
+        <script>
+        (function () {
+            /*
+             * ⚠️ REEMPLAZA esta URL con la URL de implementación de tu Google Apps Script.
+             * Instrucciones en los comentarios más arriba.
+             */
+            var GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzB95A99ifz81ZaMLTgDCi_EAXRGjRO0Uh4wcMXp0HMCqlb57vBVN4ofC1RxZnErcHGyw/exec';
+
+            var overlay = document.getElementById('registro-overlay');
+            var form    = document.getElementById('registro-form');
+            var estado  = document.getElementById('registro-estado');
+            var btnEnviar = document.getElementById('btn-registrar');
+
+            // ── Mostrar el formulario (llamado desde WinScene) ──────────────────
+            window.mostrarFormularioRegistro = function () {
+                overlay.classList.add('visible');
+                document.getElementById('r-nombre').focus();
+            };
+
+            // ── Cerrar el formulario ────────────────────────────────────────────
+            document.getElementById('btn-cerrar-reg').addEventListener('click', cerrarFormulario);
+            overlay.addEventListener('click', function (e) {
+                if (e.target === overlay) cerrarFormulario();
+            });
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape') cerrarFormulario();
+            });
+
+            function cerrarFormulario() {
+                overlay.classList.remove('visible');
+                limpiarErrores();
+                estado.textContent = '';
+                estado.className = '';
+            }
+
+            // ── Validación de campos ────────────────────────────────────────────
+            function mostrarError(campo, msgId) {
+                campo.classList.add('error');
+                document.getElementById(msgId).style.display = 'block';
+            }
+            function limpiarErrores() {
+                ['r-nombre','r-apellido','r-celular','r-dni','r-distrito'].forEach(function(id) {
+                    var el = document.getElementById(id);
+                    if (el) el.classList.remove('error');
+                });
+                document.querySelectorAll('.campo-error-msg').forEach(function(el) {
+                    el.style.display = 'none';
+                });
+            }
+
+            function validarFormulario() {
+                limpiarErrores();
+                var valido = true;
+                var nombre   = document.getElementById('r-nombre').value.trim();
+                var apellido = document.getElementById('r-apellido').value.trim();
+                var celular  = document.getElementById('r-celular').value.trim().replace(/\s/g,'');
+                var dni      = document.getElementById('r-dni').value.trim();
+                var distrito = document.getElementById('r-distrito').value.trim();
+
+                if (!nombre) {
+                    mostrarError(document.getElementById('r-nombre'), 'err-nombre');
+                    valido = false;
+                }
+                if (!apellido) {
+                    mostrarError(document.getElementById('r-apellido'), 'err-apellido');
+                    valido = false;
+                }
+                if (!/^\d{9}$/.test(celular)) {
+                    mostrarError(document.getElementById('r-celular'), 'err-celular');
+                    valido = false;
+                }
+                if (!/^\d{8}$/.test(dni)) {
+                    mostrarError(document.getElementById('r-dni'), 'err-dni');
+                    valido = false;
+                }
+                if (!distrito) {
+                    mostrarError(document.getElementById('r-distrito'), 'err-distrito');
+                    valido = false;
+                }
+                return valido
+                    ? { nombre: nombre, apellido: apellido, celular: celular, dni: dni, distrito: distrito }
+                    : null;
+            }
+
+            // ── Envío a Google Sheets ───────────────────────────────────────────
+            form.addEventListener('submit', function (e) {
+                e.preventDefault();
+                var datos = validarFormulario();
+                if (!datos) return;
+
+                if (GOOGLE_SCRIPT_URL === 'TU_URL_DE_GOOGLE_APPS_SCRIPT_AQUI') {
+                    estado.textContent = '⚠️ Configura la URL de Google Apps Script en index.html';
+                    estado.className = 'error';
+                    return;
+                }
+
+                btnEnviar.disabled = true;
+                btnEnviar.textContent = 'Enviando…';
+                estado.textContent = '';
+                estado.className = '';
+
+                var params = new URLSearchParams(datos);
+                fetch(GOOGLE_SCRIPT_URL + '?' + params.toString(), {
+                    method: 'GET',
+                    mode: 'no-cors'   // GET nunca dispara preflight CORS
+                })
+                .then(function () {
+                    estado.textContent = '✅ ¡Registro guardado exitosamente! Gracias por participar.';
+                    estado.className = 'exito';
+                    btnEnviar.textContent = '¡Enviado!';
+                    form.reset();
+                    setTimeout(cerrarFormulario, 3500);
+                })
+                .catch(function () {
+                    estado.textContent = '❌ Error al enviar. Verifica tu conexión e intenta de nuevo.';
+                    estado.className = 'error';
+                    btnEnviar.disabled = false;
+                    btnEnviar.textContent = 'Enviar Registro';
+                });
+            });
+
+            // ── Solo dígitos en DNI y celular ──────────────────────────────────
+            ['r-dni', 'r-celular'].forEach(function(id) {
+                document.getElementById(id).addEventListener('input', function () {
+                    this.value = this.value.replace(/[^\d\s]/g, '');
+                });
+            });
+        })();
+        </script>
+
         <script type="module" src="./src/main.js"></script>
     </body>
     </html>
