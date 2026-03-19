@@ -36,7 +36,7 @@ export class MenuScene extends Phaser.Scene {
 
         this.add.text(width / 2, height * 0.42, 'Simulación del proceso electoral peruano', {
             fontSize: '20px',
-            color: '#ffe8e8',
+            color: '#000000',
             fontFamily: 'Arial'
         }).setOrigin(0.5);
 
@@ -99,7 +99,7 @@ export class MenuScene extends Phaser.Scene {
         pasos.forEach((paso, i) => {
             this.add.text(width * 0.22, height * 0.73 + i * 28, paso, {
                 fontSize: '17px',
-                color: '#ffe8e8',
+                color: '#000000',
                 fontFamily: 'Arial'
             }).setOrigin(0, 0.5);
         });
@@ -107,7 +107,7 @@ export class MenuScene extends Phaser.Scene {
         // ─── FOOTER ──────────────────────────────────────────────────────────────
         this.add.text(width / 2, height - 22, 'ONPE – Oficina Nacional de Procesos Electorales', {
             fontSize: '13px',
-            color: '#ffbbbb',
+            color: '#000000',
             fontFamily: 'Arial'
         }).setOrigin(0.5);
 

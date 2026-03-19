@@ -77,8 +77,13 @@ export class VotingScene extends Phaser.Scene {
                 this.inputActive = can.id;
                 this.candidates.forEach(c => c.boxNum.setFillStyle(0xffffff));
                 boxNum.setFillStyle(0xffffcc);
+
+                this.showNumpad();
             });
         });
+
+        // --- TECLADO NUMÉRICO VIRTUAL (Para Celulares) ---
+        this.crearNumpad(width, height);
 
         // --- BOTONES INFERIORES ---
         const btnConfirm = this.add.rectangle(width/2 - 100, height/2 + 240, 180, 50, 0xf0e68c).setInteractive().setStrokeStyle(2, 0x000000);
@@ -147,7 +152,112 @@ export class VotingScene extends Phaser.Scene {
         this.feedback = this.add.text(width/2, height/2 + 290, '', { fontSize: '20px', color: '#ff0000', fontStyle: 'bold' }).setOrigin(0.5);
     }
 
+    crearNumpad(width, height) {
+        const padWidth = width * 0.35;
+        const padHeight = height * 0.4;
+
+        this.numpadContainer = this.add.container(width / 2, height + padHeight)
+            .setDepth(1500)
+            .setVisible(false);
+
+        const bg = this.add.rectangle(0, 0, padWidth, padHeight, 0x222222, 0.95)
+            .setStrokeStyle(2, 0xffffff);
+
+        this.numpadContainer.add(bg);
+
+        const keys = ['1','2','3','4','5','6','7','8','9','C','0','X'];
+
+        const cols = 3;
+        const rows = 4;
+
+        const btnWidth = padWidth / cols;
+        const btnHeight = padHeight / rows;
+
+        keys.forEach((key, i) => {
+            const col = i % cols;
+            const row = Math.floor(i / cols);
+
+            const x = -padWidth / 2 + btnWidth * col + btnWidth / 2;
+            const y = -padHeight / 2 + btnHeight * row + btnHeight / 2;
+
+            const btn = this.add.rectangle(x, y, btnWidth * 0.9, btnHeight * 0.9, 0xeeeeee)
+                .setInteractive()
+                .setStrokeStyle(1, 0x000000);
+
+            const txt = this.add.text(x, y, key, {
+                fontSize: `${Math.floor(btnHeight * 0.4)}px`,
+                color: '#000',
+                fontStyle: 'bold'
+            }).setOrigin(0.5);
+
+            btn.on('pointerdown', () => {
+                btn.setFillStyle(0xbbbbbb);
+
+                if (key === 'C') this.removeNumber();
+                else if (key === 'X') this.hideNumpad();
+                else this.addNumber(key);
+            });
+
+            btn.on('pointerup', () => btn.setFillStyle(0xeeeeee));
+
+            this.numpadContainer.add([btn, txt]);
+        });
+    }
+
+    showNumpad() {
+        const { width, height } = this.scale;
+
+        this.numpadContainer.setPosition(width / 2, height + 200);
+        this.numpadContainer.setVisible(true);
+
+        this.tweens.add({
+            targets: this.numpadContainer,
+            y: height - (this.scale.height * 0.2),
+            duration: 300,
+            ease: 'Cubic.easeOut'
+        });
+    }
+
+    hideNumpad() {
+        const { height } = this.scale;
+
+        this.tweens.add({
+            targets: this.numpadContainer,
+            y: height + 200,
+            duration: 250,
+            ease: 'Cubic.easeIn',
+            onComplete: () => {
+                this.numpadContainer.setVisible(false);
+            }
+        });
+    }
+
+    addNumber(num) {
+        if (!this.inputActive) return;
+
+        const can = this.candidates.find(c => c.id === this.inputActive);
+
+        if (can && this.votes[can.id].number.length < 2) {
+            this.votes[can.id].number += num;
+            can.numText.setText(this.votes[can.id].number);
+        }
+    }
+
+    removeNumber() {
+        if (!this.inputActive) return;
+
+        const can = this.candidates.find(c => c.id === this.inputActive);
+
+        if (can) {
+            this.votes[can.id].number =
+                this.votes[can.id].number.slice(0, -1);
+
+            can.numText.setText(this.votes[can.id].number);
+        }
+    }
+
     showConfirmationWindow() {
+        this.hideNumpad();
         this.confirmContainer.setVisible(true);
     }
 
@@ -161,8 +271,10 @@ export class VotingScene extends Phaser.Scene {
             can.boxNum.setFillStyle(0xffffff);
         });
         this.inputActive = null;
+        this.numpadContainer.setVisible(false);
         this.feedback.setText("Cédula limpiada").setColor('#0000ff');
         this.time.delayedCall(1500, () => this.feedback.setText(''));
+        this.hideNumpad();
     }
 
     // --- VALIDACIÓN DE VOTOS ---
